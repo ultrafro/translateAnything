@@ -60,6 +60,8 @@ def test_transcript_keeps_history_and_updates_revisions_in_place(app):
     assert len(overlay.history) == 50
     bar = overlay.transcript.verticalScrollBar()
     assert bar.maximum() > 0
+    from PySide6.QtTest import QTest
+    QTest.qWait(450)
     bar.setValue(0)
     overlay.update_caption((1, 54, 2), 'Updated last sentence', {'en': 'Updated last sentence'}, True)
     overlay.render()
@@ -68,10 +70,83 @@ def test_transcript_keeps_history_and_updates_revisions_in_place(app):
     overlay.update_caption((1, 55, 1), 'Following again', {'en': 'Following again'}, True)
     overlay.render()
     app.processEvents()
+    from PySide6.QtTest import QTest
+    QTest.qWait(450)
     assert bar.value() == bar.maximum() and overlay.follow_live
     assert overlay.isVisible()
     overlay.clear_history()
     assert not overlay.history
+    overlay.close()
+
+
+def test_follow_scroll_is_gradual_and_user_can_pause_and_resume(app):
+    from PySide6.QtTest import QTest
+    overlay = ui.Overlay()
+    for i in range(10):
+        overlay.update_caption((1, i, 1), 'Some spoken words. ' * 8, {}, False)
+    overlay.render()
+    app.processEvents()
+    bar = overlay.transcript.verticalScrollBar()
+    overlay.resume_live()
+    QTest.qWait(450)
+    previous = bar.value()
+    overlay.update_caption((1, 10, 1), 'Another sentence. ' * 12, {}, False)
+    overlay.render()
+    assert bar.value() == previous < bar.maximum()
+    QTest.qWait(35)
+    assert previous < bar.value() < bar.maximum()
+    assert overlay.follow_live
+    bar.setValue(bar.value() - 100)
+    paused = bar.value()
+    assert overlay.follow_button.text() == '↓ Resume live'
+    QTest.qWait(100)
+    assert bar.value() == paused
+    overlay.follow_button.click()
+    QTest.qWait(450)
+    assert bar.value() == bar.maximum()
+    assert overlay.follow_button.text() == '● Following live'
+    overlay.close()
+
+
+def test_paused_entry_stays_put_during_reflow_and_history_eviction(app):
+    overlay = ui.Overlay()
+    for i in range(50):
+        overlay.update_caption((1, i, 1), f'Entry {i}. ' * 8, {}, False)
+    overlay.render()
+    app.processEvents()
+    bar = overlay.transcript.verticalScrollBar()
+    anchor = 'entry_1_20'
+    bar.setValue(round(overlay.entry_positions()[anchor]) + 12)
+    offset = overlay.entry_positions()[anchor] - bar.value()
+    overlay.update_caption((1, 1, 2), 'Earlier translation gets much longer. ' * 30, {}, True)
+    overlay.render()
+    assert abs(overlay.entry_positions()[anchor] - bar.value() - offset) <= 1
+    overlay.update_caption((1, 50, 1), 'New entry removes oldest entry', {}, False)
+    overlay.render()
+    assert abs(overlay.entry_positions()[anchor] - bar.value() - offset) <= 1
+    assert not overlay.follow_live
+    overlay.close()
+
+
+def test_following_history_eviction_scrolls_instead_of_jumping(app):
+    from PySide6.QtTest import QTest
+    overlay = ui.Overlay()
+    for i in range(50):
+        overlay.update_caption((1, i, 1), f'Entry {i}. ' * 8, {}, False)
+    overlay.render()
+    app.processEvents()
+    overlay.resume_live()
+    QTest.qWait(450)
+    bar = overlay.transcript.verticalScrollBar()
+    positions = overlay.entry_positions()
+    anchor = next(name for name, y in reversed(list(positions.items())) if y <= bar.value())
+    offset = positions[anchor] - bar.value()
+    overlay.update_caption((1, 50, 1), 'Next sentence. ' * 8, {}, False)
+    overlay.render()
+    assert abs(overlay.entry_positions()[anchor] - bar.value() - offset) <= 1
+    assert bar.value() < bar.maximum() and overlay.follow_live
+    QTest.qWait(450)
+    assert bar.value() == bar.maximum()
     overlay.close()
 
 

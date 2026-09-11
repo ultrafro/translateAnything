@@ -4,7 +4,7 @@ import html
 import sys
 import threading
 from collections import OrderedDict
-from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint
+from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint, QEvent
 from PySide6.QtGui import QFont, QColor, QPainter
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QComboBox, QListWidget, QListWidgetItem, QAbstractItemView,
@@ -40,12 +40,18 @@ class Overlay(QWidget):
         self.history = OrderedDict()
         self.follow_live = True
         self.updating_scroll = False
+        self.rendered_content = None
         header = QHBoxLayout()
         title = QLabel('CONVERSATION TRANSCRIPT')
         title.setAttribute(Qt.WA_TransparentForMouseEvents)
         title.setToolTip('Drag this bar to move the transcript')
         title.setStyleSheet('color: #91a6bd; font: 11px "Segoe UI"; background: transparent;')
         header.addWidget(title, 1)
+        self.follow_button = QPushButton('● Following live')
+        self.follow_button.setToolTip('Follow the newest captions')
+        self.follow_button.setStyleSheet('color: #72e5ba; background: #243245; border: 0; border-radius: 5px; padding: 5px;')
+        self.follow_button.clicked.connect(self.resume_live)
+        header.addWidget(self.follow_button)
         self.minimize_button = QPushButton('—')
         self.minimize_button.setToolTip('Minimize transcript')
         self.minimize_button.setFixedWidth(30)
@@ -59,6 +65,8 @@ class Overlay(QWidget):
         self.layout.addLayout(header)
         self.transcript = QTextBrowser()
         self.transcript.setOpenLinks(False)
+        self.transcript.installEventFilter(self)
+        self.transcript.viewport().installEventFilter(self)
         self.transcript.verticalScrollBar().valueChanged.connect(self.on_scroll_changed)
         self.transcript.setStyleSheet('''
             QTextBrowser { color: white; background: transparent; border: 0; }
@@ -70,7 +78,7 @@ class Overlay(QWidget):
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self.render)
         self.scroll_timer = QTimer(self)
-        self.scroll_timer.setSingleShot(True)
+        self.scroll_timer.setInterval(16)
         self.scroll_timer.timeout.connect(self.scroll_to_bottom)
 
     def paintEvent(self, event):
@@ -112,18 +120,35 @@ class Overlay(QWidget):
     def clear_history(self):
         self.history.clear()
         self.follow_live = True
+        self.update_follow_button()
         self.render()
+
+    def entry_positions(self):
+        document = self.transcript.document()
+        positions = {}
+        block = document.begin()
+        while block.isValid():
+            fragment = block.begin()
+            while not fragment.atEnd():
+                for name in fragment.fragment().charFormat().anchorNames():
+                    positions[name] = document.documentLayout().blockBoundingRect(block).top()
+                fragment += 1
+            block = block.next()
+        return positions
 
     def render(self):
         self.render_timer.stop()
         bar = self.transcript.verticalScrollBar()
         previous = bar.value()
+        positions = self.entry_positions()
+        anchor = next((name for name, y in reversed(list(positions.items())) if y <= previous), None)
+        offset = previous - positions[anchor] if anchor else 0
         sections = []
-        for entry in self.history.values():
+        for key, entry in self.history.items():
             state = '✓ Ready' if entry['ready'] else 'Translating…' if entry['source_final'] else 'Listening…'
             state_color = '#72e5ba' if entry['ready'] else '#d6b875'
             text_color = '#ffffff' if entry['ready'] else '#96a5b8'
-            lines = [f'<p style="color:#8da5bd; font-size:10pt; margin-bottom:5px;">{entry["time"]}'
+            lines = [f'<p style="color:#8da5bd; font-size:10pt; margin-bottom:5px;"><a name="entry_{key[0]}_{key[1]}">{entry["time"]}</a>'
                      f' &nbsp; <span style="color:{state_color};">{state}</span></p>']
             translations = entry['translations']
             if not translations:
@@ -139,15 +164,27 @@ class Overlay(QWidget):
         if not content:
             content = '<p style="color:#91a6bd;">Waiting for speech…</p>'
         content += '<p style="font-size:8pt; margin-top:8px;">&nbsp;</p>'
+        signature = (content, self.font_size)
+        if signature == self.rendered_content:
+            return
+        first_render = self.rendered_content is None
         self.updating_scroll = True
+        self.transcript.setUpdatesEnabled(False)
         try:
             self.transcript.setFont(QFont('Segoe UI', self.font_size))
             self.transcript.setHtml(content)
-            bar.setValue(bar.maximum() if self.follow_live else min(previous, bar.maximum()))
+            positions = self.entry_positions()
+            if anchor:
+                # Keep the same entry at the same screen height, even when older
+                # translations reflow or the oldest retained entry is removed.
+                previous = round(positions[anchor] + offset) if anchor in positions else 0
+            bar.setValue(bar.maximum() if first_render and self.follow_live else min(previous, bar.maximum()))
+            self.rendered_content = signature
         finally:
+            self.transcript.setUpdatesEnabled(True)
             self.updating_scroll = False
         if self.follow_live:
-            self.scroll_timer.start(0)
+            self.scroll_timer.start()
 
     def on_scroll_changed(self, value):
         if not self.updating_scroll:
@@ -155,11 +192,38 @@ class Overlay(QWidget):
             self.follow_live = bar.maximum() - value <= 8
             if not self.follow_live:
                 self.scroll_timer.stop()
+            self.update_follow_button()
+
+    def update_follow_button(self):
+        self.follow_button.setText('● Following live' if self.follow_live else '↓ Resume live')
+
+    def eventFilter(self, watched, event):
+        scrolling_up = (event.type() == QEvent.Wheel and
+                        (event.angleDelta().y() > 0 or event.pixelDelta().y() > 0))
+        scrolling_up |= (event.type() == QEvent.KeyPress and
+                         event.key() in (Qt.Key_Up, Qt.Key_PageUp, Qt.Key_Home))
+        if scrolling_up:
+            self.follow_live = False
+            self.scroll_timer.stop()
+            self.update_follow_button()
+        return super().eventFilter(watched, event)
+
+    def resume_live(self):
+        self.follow_live = True
+        self.update_follow_button()
+        self.scroll_timer.start()
 
     def scroll_to_bottom(self):
         if self.follow_live:
             bar = self.transcript.verticalScrollBar()
-            bar.setValue(bar.maximum())
+            distance = bar.maximum() - bar.value()
+            self.updating_scroll = True
+            try:
+                bar.setValue(bar.value() + max(1, round(distance * .4)) if distance else bar.maximum())
+            finally:
+                self.updating_scroll = False
+            if bar.value() == bar.maximum():
+                self.scroll_timer.stop()
 
     def closeEvent(self, event):
         self.render_timer.stop()

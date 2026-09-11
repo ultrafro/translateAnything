@@ -6,6 +6,11 @@ import pytest
 from caption_app import updater as u
 
 
+@pytest.fixture(autouse=True)
+def installed_version(monkeypatch):
+    monkeypatch.setattr(u, 'VERSION', '1.0.0')
+
+
 def bundle(extra=None, release='1.0.1'):
     files = {'main.py': b'# new main', 'caption_app/version.py': b"VERSION = '1.0.1'",
              'caption_app/updater.py': b'# updater'}

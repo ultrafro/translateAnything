@@ -35,6 +35,8 @@ Keep the folder somewhere writable, such as your home folder. Keep Terminal open
 
 ## Updates
 
+The transcript says **Following live** while it scrolls gently with new captions. Scroll up to pause it; click **Resume live** to catch up. Your reading position stays on the same entry when earlier translations change or old entries are removed.
+
 The app checks GitHub whenever it opens. Compatible app updates download automatically and install the next time you open it. Your models and settings stay in place. The settings window shows update status. Offline captions still work with models already downloaded.
 
 A release needing new Python dependencies will say a fresh download is required. Download the new package using the same steps above. Always extract the archive before opening the app.
