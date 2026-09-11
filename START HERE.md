@@ -6,9 +6,9 @@
 2. Download **Translate-Anything-Windows.zip**. Right-click it → **Extract All**.
 3. Open the extracted folder and double-click **Start Captions.bat**.
 4. Leave setup open. The first start downloads dependencies and models; keep the internet connected.
-5. When the app says **Ready**, choose your audio output and caption languages. Click **Start live captions**.
+5. Click **⚙** to choose your audio output and caption languages. When the app says **Ready**, click **Start live captions**.
 
-To include your voice, check **Include my microphone** and choose your mic.
+The transcript is the main window. Click **⚙** to open or close settings inside it. To include your voice, open settings, check **Include my microphone** and choose your mic. Start/Stop stays at the bottom in either view. **—** collapses the window; **×** closes the app.
 Next time, just open **Start Captions.bat** again. No Python installation or API key needed.
 
 Keep the whole folder together. Allow roughly 12 GB of free disk space. Windows 10/11 x64 is required; a recent NVIDIA GPU is recommended. CPU recognition can lag behind speech.
@@ -21,7 +21,7 @@ Keep the whole folder together. Allow roughly 12 GB of free disk space. Windows 
 2. Download **Translate-Anything-Mac-Apple-Silicon.tar.gz** and double-click it to extract.
 3. Open the folder and double-click **Start Captions.command**. If macOS blocks it, use **System Settings → Privacy & Security → Open Anyway** after checking you downloaded this release.
 4. Leave setup open while it downloads. Allow microphone access when macOS asks.
-5. To caption your voice, select **Microphone only**, check **Include my microphone**, choose your mic, and click **Start live captions** after **Ready** appears.
+5. Click **⚙**. To caption your voice, select **Microphone only**, check **Include my microphone**, choose your mic, and click **Start live captions** after **Ready** appears.
 
 For sound from other Mac apps, do this once:
 

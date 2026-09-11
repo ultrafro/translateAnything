@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint, QEvent
 from PySide6.QtGui import QFont, QColor, QPainter
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QComboBox, QListWidget, QListWidgetItem, QAbstractItemView,
-    QSpinBox, QProgressBar, QCheckBox, QMessageBox, QLayout, QTextBrowser, QDoubleSpinBox)
+    QSpinBox, QProgressBar, QCheckBox, QMessageBox, QLayout, QTextBrowser, QDoubleSpinBox, QScrollArea)
 from .config import ROOT, LANGUAGES
 from .audio import Capture, devices, microphones
 from .engine import Engine
@@ -42,6 +42,7 @@ class Overlay(QWidget):
         self.updating_scroll = False
         self.rendered_content = None
         header = QHBoxLayout()
+        self.header = header
         title = QLabel('CONVERSATION TRANSCRIPT')
         title.setAttribute(Qt.WA_TransparentForMouseEvents)
         title.setToolTip('Drag this bar to move the transcript')
@@ -261,7 +262,10 @@ class Overlay(QWidget):
         screen = screens[min(self.screen_index, len(screens) - 1)]
         rect = screen.availableGeometry()
         width = min(720, int(rect.width() * .46))
-        height = 46 if self.collapsed else min(520, int(rect.height() * .55))
+        if getattr(self, 'unified_window', False):
+            width = min(rect.width() - 40, max(600, width))
+        expanded_height = min(840, int(rect.height() * .85)) if getattr(self, 'settings_open', False) else min(520, int(rect.height() * .55))
+        height = 46 if self.collapsed else expanded_height
         self.setFixedSize(width, height)
         if self.user_position is None:
             self.move(rect.x() + 20, rect.bottom() - self.height() - 38)
@@ -270,13 +274,37 @@ class Overlay(QWidget):
                       max(rect.top(), min(self.user_position.y(), rect.bottom() - height + 1)))
 
 
-class Window(QWidget):
+class Window(Overlay):
     def __init__(self, load_models=True):
         super().__init__()
+        self.unified_window = True
+        self.settings_open = False
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Translate Anything')
-        self.resize(620, 720)
         self.events = Events()
-        self.overlay = Overlay()
+        self.overlay = self
+        self.settings_button = QPushButton('⚙')
+        self.settings_button.setAccessibleName('Settings')
+        self.settings_button.setToolTip('Open settings')
+        self.settings_button.setCheckable(True)
+        self.settings_button.setFixedWidth(32)
+        self.settings_button.setStyleSheet('QPushButton { color: #aec4d8; background: #243245; border: 0; border-radius: 5px; padding: 2px; font-size: 16px; } QPushButton:checked { background: #376354; color: white; }')
+        self.settings_button.clicked.connect(self.toggle_settings)
+        self.header.insertWidget(1, self.settings_button)
+        close = QPushButton('×')
+        close.setAccessibleName('Quit Translate Anything')
+        close.setToolTip('Close app')
+        close.setFixedWidth(30)
+        close.setStyleSheet(self.settings_button.styleSheet())
+        close.clicked.connect(self.close)
+        self.header.addWidget(close)
+        self.settings_page = QWidget()
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setWidget(self.settings_page)
+        self.settings_scroll.setStyleSheet('QScrollArea { border: 0; background: #101724; }')
+        self.layout.addWidget(self.settings_scroll, 1)
+        self.settings_scroll.hide()
         self.capture = None
         self.active = False
         self.loaded = False
@@ -289,7 +317,7 @@ class Window(QWidget):
             self.settings = json.loads(self.settings_path.read_text('utf-8'))
         except (OSError, ValueError):
             self.settings = {}
-        self.setStyleSheet('''
+        self.settings_page.setStyleSheet('''
             QWidget { background: #101724; color: #e8edf5; font-family: "Segoe UI"; font-size: 14px; }
             QLabel#title { font-size: 30px; font-weight: 700; }
             QLabel#muted { color: #a3b2c9; }
@@ -302,7 +330,7 @@ class Window(QWidget):
             QProgressBar { border: 0; background: #263449; max-height: 6px; }
             QProgressBar::chunk { background: #57dac0; }
         ''')
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self.settings_page)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(12)
         title = QLabel('Translate Anything'); title.setObjectName('title'); layout.addWidget(title)
@@ -358,6 +386,7 @@ class Window(QWidget):
         layout.addWidget(self.listening)
         layout.addWidget(QLabel('Caption languages • check one or more'))
         self.languages = QListWidget(); self.languages.setSelectionMode(QAbstractItemView.NoSelection)
+        self.languages.setMinimumHeight(140)
         selected = self.settings.get('targets', ['en', 'ar'])
         for code, name in LANGUAGES.items():
             item = QListWidgetItem(name)
@@ -377,8 +406,16 @@ class Window(QWidget):
         controls.addWidget(self.monitor, 1)
         preview = QPushButton('Preview'); preview.clicked.connect(self.preview); controls.addWidget(preview)
         layout.addLayout(controls)
-        self.status = QLabel('Preparing local models…'); self.status.setWordWrap(True); self.status.setObjectName('muted'); layout.addWidget(self.status)
-        self.start = QPushButton('Loading models…'); self.start.setObjectName('start'); self.start.setEnabled(False); self.start.clicked.connect(self.toggle); layout.addWidget(self.start)
+        self.footer = QWidget()
+        footer_layout = QHBoxLayout(self.footer)
+        footer_layout.setContentsMargins(0, 4, 0, 0)
+        self.status = QLabel('Preparing local models…'); self.status.setWordWrap(True)
+        self.status.setStyleSheet('color: #a3b2c9; background: transparent; font-size: 12px;')
+        footer_layout.addWidget(self.status, 1)
+        self.start = QPushButton('Loading models…'); self.start.setEnabled(False); self.start.clicked.connect(self.toggle)
+        self.start.setStyleSheet('QPushButton { background: #57dac0; color: #08271f; border: 0; border-radius: 6px; padding: 8px; } QPushButton:disabled { background: #25303c; color: #7e8a98; }')
+        footer_layout.addWidget(self.start)
+        self.layout.addWidget(self.footer)
         note = QLabel('Nemotron 3.5 ASR + local translation. No API key.\nTranslations update during speech and settle after each pause.')
         note.setWordWrap(True); note.setObjectName('muted'); layout.addWidget(note)
         if sys.platform == 'darwin':
@@ -397,11 +434,40 @@ class Window(QWidget):
         self.events.ready.connect(self.on_ready)
         self.engine = Engine(self.events.status.emit, self.events.caption.emit, self.events.ready.emit)
         self.refresh()
+        self.font_size = self.size.value()
+        self.render()
+        self.place()
         if load_models:
             self.engine.thread.start()
             from .updater import check
             self.update_thread = threading.Thread(target=check, args=(ROOT, self.events.update.emit), daemon=True)
             self.update_thread.start()
+
+    def toggle_settings(self):
+        if self.collapsed:
+            self.toggle_minimized()
+        opening = not self.settings_open
+        previous = self.transcript.verticalScrollBar().value()
+        self.updating_scroll = True
+        self.settings_open = opening
+        self.settings_button.setChecked(self.settings_open)
+        self.settings_button.setToolTip('Back to transcript' if self.settings_open else 'Open settings')
+        self.settings_scroll.setVisible(self.settings_open)
+        self.transcript.setVisible(not self.settings_open)
+        self.place()
+        self.transcript.verticalScrollBar().setValue(previous)
+        self.updating_scroll = False
+        if not self.settings_open:
+            self.save()
+            if self.follow_live:
+                self.scroll_timer.start()
+
+    def toggle_minimized(self):
+        super().toggle_minimized()
+        self.footer.setVisible(not self.collapsed)
+        self.settings_scroll.setVisible(not self.collapsed and self.settings_open)
+        self.transcript.setVisible(not self.collapsed and not self.settings_open)
+        self.place()
 
     def refresh(self):
         self.device.clear()
@@ -441,9 +507,11 @@ class Window(QWidget):
         self.loaded = True
         self.start.setEnabled(True)
         self.start.setText('Start live captions')
-        self.status.setText('Ready • choose languages, then start')
+        self.status.setText('Ready • use ⚙ for languages and microphone')
 
     def preview(self):
+        if self.settings_open:
+            self.toggle_settings()
         self.overlay.font_size = self.size.value()
         self.overlay.screen_index = self.monitor.currentIndex()
         if not self.overlay.history:
@@ -501,6 +569,8 @@ class Window(QWidget):
             self.capture.start()
             self.start.setText('Stop captions')
             self.save()
+            if self.settings_open:
+                self.toggle_settings()
         for widget in (self.auto_listening, self.device, self.languages, self.refresh_button, self.include_mic, self.mic_gain):
             widget.setEnabled(not self.active)
         self.listening.setEnabled(not self.active and not self.auto_listening.isChecked())
@@ -534,9 +604,8 @@ class Window(QWidget):
         self.engine.stop.set()
         if self.engine.thread.is_alive(): self.engine.thread.join(timeout=3)
         if self.engine.translation_thread.is_alive(): self.engine.translation_thread.join(timeout=3)
-        self.overlay.close()
         self.save()
-        event.accept()
+        super().closeEvent(event)
 
 
 def main():

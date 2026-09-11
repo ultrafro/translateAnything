@@ -226,3 +226,59 @@ def test_transcript_can_be_moved_and_minimized_without_losing_history(app):
     assert 'A retained line' in overlay.transcript.toPlainText()
     assert 'New line while minimized' in overlay.transcript.toPlainText()
     overlay.close()
+
+
+def test_single_window_settings_and_capture_lifecycle(app, monkeypatch, tmp_path):
+    monkeypatch.setattr(ui, 'ROOT', tmp_path)
+    monkeypatch.setattr(ui, 'devices', lambda: [(1, 'Output', True)])
+    monkeypatch.setattr(ui, 'microphones', lambda: [(2, 'Microphone', True)])
+    captures = []
+    class Capture:
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+            captures.append(self)
+        def start(self): pass
+        def close(self): self.closed = True
+    monkeypatch.setattr(ui, 'Capture', Capture)
+    w = ui.Window(load_models=False)
+    w.show()
+    app.processEvents()
+    assert w.overlay is w
+    assert w.transcript.isVisible() and not w.settings_scroll.isVisible()
+    assert w.start.isVisible()
+    w.settings_button.click()
+    app.processEvents()
+    assert w.settings_open and w.settings_scroll.isVisible()
+    assert not w.transcript.isVisible()
+    assert w.settings_scroll.window() is w
+    assert w.settings_scroll.verticalScrollBar().maximum() > 0
+    assert not w.windowFlags() & Qt.WindowDoesNotAcceptFocus
+    from PySide6.QtTest import QTest
+    w.settings_scroll.ensureWidgetVisible(w.size)
+    w.size.setFocus()
+    QTest.keyClick(w.size, Qt.Key_A, Qt.ControlModifier)
+    QTest.keyClicks(w.size, '20')
+    QTest.keyClick(w.size, Qt.Key_Return)
+    assert w.size.value() == 20 and w.font_size == 20
+    w.on_ready()
+    w.start.click()
+    assert w.active and not w.settings_open and w.transcript.isVisible()
+    w.on_caption((w.engine.session, 1, 1), 'Retained conversation', {'en': 'Retained conversation'}, True)
+    w.render()
+    w.settings_button.click()
+    assert w.active
+    w.on_caption((w.engine.session, 2, 1), 'While in settings', {'en': 'While in settings'}, True)
+    w.toggle_minimized()
+    assert w.height() == 46
+    assert not w.footer.isVisible() and not w.settings_scroll.isVisible()
+    w.toggle_minimized()
+    assert w.settings_scroll.isVisible() and w.footer.isVisible()
+    w.settings_button.click()
+    w.render()
+    assert 'Retained conversation' in w.transcript.toPlainText()
+    assert 'While in settings' in w.transcript.toPlainText()
+    assert len([item for item in app.topLevelWidgets() if item.isVisible()]) == 1
+    w.close()
+    assert captures[0].closed and w.engine.stop.is_set()
+    assert not w.render_timer.isActive() and not w.scroll_timer.isActive()
+    assert (tmp_path / 'settings.json').exists()
