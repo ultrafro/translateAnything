@@ -12,7 +12,8 @@ def main():
         shutil.copytree(ROOT / folder, destination / folder, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache', 'python.zip', 'get-pip.py'))
     for file in ('main.py', 'Start Captions.cmd', 'Start Captions.bat', 'Start with console.cmd', 'README.md',
-                 'requirements.lock.txt', 'pytest.ini', 'setup_portable.py', 'THIRD_PARTY.md'):
+                 'requirements.lock.txt', 'requirements-mac.lock.txt', 'pytest.ini', 'setup_portable.py',
+                 'THIRD_PARTY.md', 'START HERE.md', 'Start Captions.command', 'LICENSE'):
         shutil.copy2(ROOT / file, destination / file)
     a = ASR(print)
     a.model.save_pretrained(destination / 'models/asr')

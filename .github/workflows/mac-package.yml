@@ -1,0 +1,31 @@
+name: Mac portable package and models
+on: [workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/package_release.py
+      - name: Extract actual Mac download
+        run: |
+          mkdir -p dist/package-test
+          tar -xzf dist/releases/Translate-Anything-Mac-Apple-Silicon.tar.gz -C dist/package-test
+          test -x "dist/package-test/Translate Anything/Start Captions.command"
+      - name: Run first-start dependency setup with bundled Python
+        run: |
+          cd "dist/package-test/Translate Anything"
+          runtime/bin/python3 -s -X utf8 setup_portable.py
+          runtime/bin/python3 -s -X utf8 -c "from caption_app import ui, mac_audio; print(mac_audio.devices())"
+      - name: Regression tests using bundled Python
+        run: '"dist/package-test/Translate Anything/runtime/bin/python3" -s -X utf8 -m pytest tests -q'
+      - name: Real Mac speech recognition and translation
+        run: '"dist/package-test/Translate Anything/runtime/bin/python3" -s -X utf8 tools/check_mac_models.py'
