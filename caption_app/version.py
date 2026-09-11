@@ -1,0 +1,2 @@
+VERSION = '1.0.0'
+UPDATE_API = 1

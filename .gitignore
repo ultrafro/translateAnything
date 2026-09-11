@@ -1,0 +1,12 @@
+runtime/
+models/
+logs/
+settings.json
+__pycache__/
+.pytest_cache/
+tests/fixtures/
+dist/
+.updates/
+*.update-tmp
+*.tar.gz
+*.zip

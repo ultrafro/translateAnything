@@ -1,0 +1,30 @@
+name: Test Windows and Mac
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: python -m pip install -r requirements.lock.txt --extra-index-url https://download.pytorch.org/whl/cu130
+      - name: Install Mac dependencies
+        if: runner.os == 'macOS'
+        run: python -m pip install -r requirements-mac.lock.txt
+      - run: python -m pip check
+      - name: Mac native import check
+        if: runner.os == 'macOS'
+        run: python -c "import torch, sounddevice; from caption_app.engine import ASR, Translator; from caption_app import mac_audio; print(torch.__version__, sounddevice.query_devices())"
+      - run: python -m pytest tests -q
