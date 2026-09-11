@@ -29,10 +29,14 @@ def main():
     if subprocess.run([str(executable), '-s', '-m', 'pip', '--version'], capture_output=True).returncode:
         urllib.request.urlretrieve('https://bootstrap.pypa.io/get-pip.py', pip)
         subprocess.run([str(executable), '-s', str(pip)], check=True)
+    # The embeddable interpreter deliberately ignores PYTHONPATH, including pip's
+    # isolated build environment. langid is pure Python but ships as a source tar.
+    subprocess.run([str(executable), '-s', '-m', 'pip', 'install',
+                    'setuptools==78.1.0', 'wheel==0.45.1', '--no-warn-script-location'], check=True)
     requirements = ROOT / ('requirements-mac.lock.txt' if mac else 'requirements.lock.txt')
     options = [] if mac else ['--extra-index-url', 'https://download.pytorch.org/whl/cu130']
     subprocess.run([str(executable), '-s', '-m', 'pip', 'install', '-r', str(requirements),
-                    *options, '--no-warn-script-location'], check=True)
+                    *options, '--no-build-isolation', '--no-warn-script-location'], check=True)
     subprocess.run([str(executable), '-s', '-m', 'pip', 'check'], check=True)
     (RUNTIME / '.ready').write_text('1', 'utf-8')
     print('Setup complete. Missing models download on first start.')
