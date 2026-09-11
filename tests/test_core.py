@@ -4,6 +4,20 @@ from caption_app.audio import Segmenter, BLOCK
 from caption_app.engine import parse_transcript
 
 
+def test_uncached_tokenizer_downloads_after_missing_vocab_type_error():
+    from caption_app.engine import load_pretrained
+    calls = []
+    class Tokenizer:
+        @classmethod
+        def from_pretrained(cls, name, **kwargs):
+            calls.append(kwargs)
+            if kwargs.get('local_files_only'):
+                raise TypeError('expected path, not NoneType')
+            return 'downloaded tokenizer'
+    assert load_pretrained(Tokenizer, 'test/model') == 'downloaded tokenizer'
+    assert calls == [{'local_files_only': True}, {}]
+
+
 def test_silence_does_not_create_captions():
     found = []
     s = Segmenter(found.append)

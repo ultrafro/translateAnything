@@ -10,7 +10,9 @@ from .config import ASR_PATH, TRANSLATION_PATH, ASR_LOCALES
 def load_pretrained(cls, name, **kwargs):
     try:
         return cls.from_pretrained(name, local_files_only=True, **kwargs)
-    except OSError:
+    except (OSError, TypeError):
+        # M2M100Tokenizer passes a missing cached vocab as None to open(), which
+        # raises TypeError instead of the usual missing-cache OSError.
         return cls.from_pretrained(name, **kwargs)
 
 
