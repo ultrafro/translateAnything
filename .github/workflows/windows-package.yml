@@ -1,0 +1,26 @@
+name: Windows portable first start
+on: [workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/package_release.py
+      - name: Extract actual Windows download
+        run: Expand-Archive -LiteralPath dist/releases/Translate-Anything-Windows.zip -DestinationPath dist/package-test
+      - name: First-start setup with bundled Python
+        run: |
+          Set-Location -LiteralPath 'dist/package-test/Translate Anything'
+          & './runtime/python.exe' -s -X utf8 setup_portable.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & './runtime/python.exe' -s -X utf8 -c "from caption_app import ui; print('GUI imports passed')"
+      - name: Test using bundled Python
+        run: "& './dist/package-test/Translate Anything/runtime/python.exe' -s -X utf8 -m pytest tests -q"
